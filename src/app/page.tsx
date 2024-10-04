@@ -1,6 +1,175 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+"use client";
+import React, { useState, useEffect } from "react";
+import "../app/style.css"; 
+
+interface Todo {
+  _id: string;
+  name: string;
+  description: string;
+  status: boolean;
+  duedate: string;
+}
 
 export default function Home() {
-  return <div className={styles.page}>TODO</div>;
+  const [todos, setTodos] = useState<Todo[]>([]);
+  const [name, setName] = useState<string>("");
+  const [description, setDescription] = useState<string>("");
+  const [duedate, setDuedate] = useState<string>("");
+  const [loading, setLoading] = useState<boolean>(true);
+  const [creating, setCreating] = useState<boolean>(false); // state for creating todo
+
+  // ดึงข้อมูล Todo ทั้งหมดเมื่อโหลดหน้า
+  useEffect(() => {
+    const fetchTodos = async () => {
+      try {
+        const response = await fetch("http://localhost:3000/api/V1/todo");
+        if (!response.ok) throw new Error("Failed to fetch todos");
+        const data = await response.json();
+        setTodos(data.data);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchTodos();
+  }, []);
+
+  // สร้างงานใหม่
+  const handleCreateTodo = async () => {
+    if (!name || !description || !duedate) {
+      alert("Please fill in all fields.");
+      return;
+    }
+
+    setCreating(true); // Start loading state
+    try {
+      const response = await fetch("http://localhost:3000/api/V1/todo", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name, description, duedate }),
+      });
+      if (!response.ok) throw new Error("Failed to create todo");
+
+      const data = await response.json();
+      setTodos([...todos, data.data]);
+      setName("");
+      setDescription("");
+      setDuedate("");
+    } catch (error) {
+      console.error("Error creating todo:", error);
+      alert(error instanceof Error ? error.message : "Something went wrong");
+    } finally {
+      setCreating(false); // Stop loading state
+    }
+  };
+
+  // อัพเดทสถานะการทำงาน
+  const handleToggleStatus = async (id: string, currentStatus: boolean) => {
+    try {
+      const response = await fetch("http://localhost:3000/api/V1/todo", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ id, status: !currentStatus }),
+      });
+      if (!response.ok) throw new Error("Failed to update status");
+
+      const updatedTodos = todos.map((todo) =>
+        todo._id === id ? { ...todo, status: !currentStatus } : todo
+      );
+      setTodos(updatedTodos);
+    } catch (error) {
+      console.error("Error updating todo status:", error);
+      alert(error instanceof Error ? error.message : "Something went wrong");
+    }
+  };
+
+  // ลบงานพร้อมแสดงแจ้งเตือน
+  const handleDelete = async (id: string) => {
+    const confirmed = window.confirm("Are you sure you want to delete this task?");
+    if (confirmed) {
+      try {
+        const response = await fetch("http://localhost:3000/api/V1/todo", {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ id }),
+        });
+        if (!response.ok) throw new Error("Failed to delete todo");
+
+        setTodos(todos.filter((todo) => todo._id !== id));
+      } catch (error) {
+        console.error("Error deleting todo:", error);
+        alert(error instanceof Error ? error.message : "Something went wrong");
+      }
+    }
+  };
+
+  return (
+    <div className="page">
+      <h1>TODO List</h1>
+
+      <div>
+        <h2>Create New Task</h2>
+        <input
+          type="text"
+          placeholder="Task Name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="input-field"
+        />
+        <input
+          type="text"
+          placeholder="Task Description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          className="input-field"
+        />
+        <input
+          type="date"
+          id="duedate"
+          value={duedate}
+          onChange={(e) => {
+            const selectedDate = e.target.value;
+            if (!isNaN(Date.parse(selectedDate))) {
+              setDuedate(selectedDate);
+            }
+          }}
+          className="input-field"
+        />
+        <button onClick={handleCreateTodo} className="btn create-btn" disabled={creating}>
+          {creating ? "Creating..." : "Add Task"}
+        </button>
+      </div>
+
+      {loading ? (
+        <p>Loading...</p>
+      ) : (
+        <ul className="todo-list">
+          {todos.map((todo) => (
+            <li key={todo._id} className={`todo-item ${todo.status ? "completed" : ""}`}>
+              <h3>{todo.name}</h3>
+              <p>{todo.description}</p>
+              <p>Due date: {todo.duedate}</p>
+              <p>Status: {todo.status ? "Completed" : "Not Completed"}</p>
+              <button
+                onClick={() => handleToggleStatus(todo._id, todo.status)}
+                className={`btn status-btn ${todo.status ? "completed-btn" : "incomplete-btn"}`}
+              >
+                {todo.status ? "Mark as Incomplete" : "Mark as Complete"}
+              </button>
+              <button onClick={() => handleDelete(todo._id)} className="btn delete-btn">
+                Delete
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
